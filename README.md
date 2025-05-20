@@ -19,7 +19,7 @@ SEC (Simple Executable Code) is a custom language that uses block-style logic an
 
 >more updates
 
->big grannd opening day
+>big grand opening day
 
 Example:
 ```sec
