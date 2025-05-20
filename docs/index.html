@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SEC Language Alpha</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+    textarea { width: 100%; height: 200px; font-family: monospace; }
+    pre { background: #fff; padding: 10px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h1>SEC Alpha Interpreter</h1>
+  <textarea id="secCode">[main::
+[say.x("Hello World!")]
+[num.mul("2, 3")]
+[input.age("How old are you?")]
+[fetch.x(age)]
+{[shadow::
+[js%% & shadow%%
+console.log("Hello, World!");
+wait(1000)
+console.log("Thanks for waiting.");
+]}]
+end</textarea>
+  <br><br>
+  <button onclick="runSEC()">Run SEC Code</button>
+  <h3>Output:</h3>
+  <pre id="output"></pre>
+
+  <script>
+    async function runSEC() {
+      const rawCode = document.getElementById("secCode").value;
+      const output = document.getElementById("output");
+      let result = '';
+      const vars = {};
+
+      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+      async function processLine(line) {
+        line = line.trim();
+
+        // Skip if not a command
+        if (!line.startsWith("[") || !line.endsWith("]")) return;
+
+        line = line.slice(1, -1).trim();
+
+        if (line.startsWith("main::")) return;
+        if (line.startsWith("shadow::")) return;
+
+        // Handle block libraries
+        if (line.includes("js%%") || line.includes("shadow%%")) {
+          const [libs, ...rest] = line.split("^");
+          const commands = rest.map(x => x.trim());
+
+          if (libs.includes("js%%")) {
+            for (const cmd of commands) {
+              try { eval(cmd); } catch (e) { result += `JS Error: ${e}\n`; }
+            }
+          }
+          if (libs.includes("shadow%%")) {
+            for (const cmd of commands) {
+              if (cmd.startsWith("wait(")) {
+                const time = parseInt(cmd.match(/wait\((\d+)\)/)[1]);
+                await sleep(time);
+              }
+            }
+          }
+          return;
+        }
+
+        // say.x
+        if (line.startsWith("say.x(")) {
+          const content = line.match(/say\.x\("(.+?)"\)/);
+          if (content) result += content[1] + "\n";
+        }
+
+        // num.*
+        if (line.startsWith("num.")) {
+          const match = line.match(/num\.(\w+)\("(.+?)"\)/);
+          if (!match) return;
+          const fn = match[1];
+          const nums = match[2].split(",").map(n => parseFloat(n.trim()));
+          let val;
+          if (fn === "mul") val = nums.reduce((a, b) => a * b, 1);
+          if (fn === "add") val = nums.reduce((a, b) => a + b, 0);
+          if (fn === "div") val = nums.reduce((a, b) => a / b);
+          if (fn === "sub") val = nums.reduce((a, b) => a - b);
+          result += val + "\n";
+        }
+
+        // input.age
+        if (line.startsWith("input.age(")) {
+          const question = line.match(/input\.age\("(.+?)"\)/);
+          if (question) {
+            const val = prompt(question[1]);
+            vars["age"] = val;
+          }
+        }
+
+        // fetch.x
+        if (line.startsWith("fetch.x(")) {
+          const key = line.match(/fetch\.x\((\w+)\)/);
+          if (key && vars[key[1]]) {
+            result += vars[key[1]] + "\n";
+          }
+        }
+
+        // js%% single block
+        if (line.startsWith("js%%")) {
+          const jsCode = line.replace("js%%", "").trim();
+          try { eval(jsCode); } catch (e) { result += `JS Error: ${e}\n`; }
+        }
+
+        // shadow%% single block
+        if (line.startsWith("shadow%%")) {
+          if (line.includes("wait(")) {
+            const time = parseInt(line.match(/wait\((\d+)\)/)[1]);
+            await sleep(time);
+          }
+        }
+      }
+
+      output.innerText = "Running...\n";
+
+      const lines = rawCode
+        .replace(/{|}/g, "") // Remove blocks
+        .split("\n")
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith("//") && l !== "end");
+
+      for (let line of lines) {
+        await processLine(line);
+      }
+
+      output.innerText = result || "(no output)";
+    }
+  </script>
+</body>
+</html>
