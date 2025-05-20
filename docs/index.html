@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>SEC Language Editor</title>
   <style>
     body {
-      font-family: 'Courier New', monospace;
+      font-family: monospace;
       background: #f4f4f4;
       margin: 0;
       padding: 0;
@@ -17,43 +17,40 @@
       text-align: center;
     }
     main {
-      display: flex;
-      flex-direction: column;
-      padding: 1rem;
       max-width: 900px;
       margin: auto;
+      padding: 1rem;
     }
     textarea {
       width: 100%;
       height: 300px;
       padding: 1rem;
       font-size: 14px;
-      background: #fff;
       border: 1px solid #ccc;
-      margin-bottom: 1rem;
       resize: vertical;
+      background: #fff;
     }
     button {
-      padding: 0.5rem 1rem;
+      margin-top: 1rem;
+      padding: 0.6rem 1.2rem;
       font-size: 16px;
-      cursor: pointer;
-      background-color: #333;
+      background: #333;
       color: white;
       border: none;
-      transition: background 0.3s;
+      cursor: pointer;
     }
     button:hover {
-      background-color: #555;
+      background: #555;
     }
     #output {
-      background: #000;
+      margin-top: 1rem;
+      background: #111;
       color: #0f0;
       padding: 1rem;
-      white-space: pre-wrap;
       height: 300px;
       overflow-y: auto;
-      border: 1px solid #ccc;
-      margin-top: 1rem;
+      white-space: pre-wrap;
+      border: 1px solid #333;
     }
   </style>
 </head>
@@ -62,12 +59,13 @@
     <h1>SEC Language Editor</h1>
   </header>
   <main>
-    <textarea id="editor" placeholder="Write your SEC code here...">{[main:: 
-[say.x("Hello World!")] 
-[num.mul("2, 3")] 
-[num.add("2, 3")] 
-]} 
-[js%% console.log("Hello from JavaScript"); ] 
+    <textarea id="editor">{[main::
+[say.x("Hello World!")]
+[num.add("5, 7")]
+[num.mul("2, 4")]
+]}
+[js%% console.log("This is real JS");]
+[shadow%% wait(500)]
 [end]</textarea>
     <button onclick="runSEC()">Run SEC Code</button>
     <div id="output"></div>
@@ -75,61 +73,82 @@
 
   <script>
     function runSEC() {
-      const code = document.getElementById('editor').value;
-      const outputBox = document.getElementById('output');
-      outputBox.textContent = '';
+      const code = document.getElementById("editor").value;
+      const output = document.getElementById("output");
+      output.textContent = "";
       try {
         parseSEC(code);
-      } catch (e) {
-        outputBox.textContent += '[Error] ' + e.message + '\n';
+      } catch (err) {
+        output.textContent += "[Error] " + err.message + "\n";
       }
     }
 
     function printOutput(text) {
-      document.getElementById('output').textContent += text + '\n';
+      document.getElementById("output").textContent += text + "\n";
     }
 
     function parseSEC(raw) {
-      const lines = raw.split(/[\r\n]+/);
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line || line.startsWith("//")) continue;
-
-        try {
-          if (line.startsWith("{[main::")) {
-            parseMainBlock(line);
-          } else if (line.startsWith("{[shadow::")) {
-            parseShadowBlock(line);
-          } else if (line.startsWith("[js%%")) {
-            executeJSBlock(line);
-          } else if (line.startsWith("[shadow%%")) {
-            executeShadowCode(line);
-          } else if (line === "[end]") {
-            printOutput("Execution ended.");
-            break;
-          } else {
-            throw new Error(`Unknown or malformed command: ${line}`);
+      const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("//"));
+      let i = 0;
+      while (i < lines.length) {
+        let line = lines[i];
+        if (line.startsWith("{[main::")) {
+          let block = line;
+          while (!line.endsWith("]}") && i < lines.length - 1) {
+            i++;
+            line = lines[i];
+            block += "\n" + line;
           }
-        } catch (err) {
-          throw new Error(`Line ${i + 1}: ${err.message}`);
+          parseMainBlock(block);
+        } else if (line.startsWith("{[shadow::")) {
+          // Placeholder for future shadow block logic
+          printOutput("[shadow::] block (not implemented yet)");
+          while (!line.endsWith("]}") && i < lines.length - 1) {
+            i++;
+            line = lines[i];
+          }
+        } else if (line.startsWith("[js%%")) {
+          const jsCode = line.slice(6, -1);
+          try {
+            const result = eval(jsCode);
+            if (result !== undefined) printOutput("[js%% result] " + result);
+          } catch (e) {
+            throw new Error("JavaScript Error: " + e.message);
+          }
+        } else if (line.startsWith("[shadow%%")) {
+          const shadowCode = line.slice(10, -1).trim();
+          if (shadowCode.startsWith("wait(")) {
+            const ms = parseInt(shadowCode.match(/wait\((\d+)\)/)?.[1] || 0);
+            const start = Date.now();
+            while (Date.now() - start < ms) {}
+            printOutput(`Waited ${ms} ms.`);
+          } else {
+            throw new Error("Unknown shadow%% command.");
+          }
+        } else if (line === "[end]") {
+          printOutput("Execution ended.");
+          return;
+        } else {
+          throw new Error(`Unknown or malformed command: ${line}`);
         }
+        i++;
       }
     }
 
-    function parseMainBlock(line) {
-      const content = line.match(/\[main::([\s\S]*)\]/);
-      if (!content) throw new Error("Invalid main block syntax.");
-      const inner = content[1].split("[").map(s => s.trim()).filter(Boolean);
-      inner.forEach(cmd => {
+    function parseMainBlock(block) {
+      const commands = [...block.matchAll(/\[(.*?)\]/g)];
+      if (!commands.length) throw new Error("No commands in main block.");
+      for (const match of commands) {
+        const cmd = match[1];
         if (cmd.startsWith("say.x(")) {
-          const text = cmd.match(/say\.x\("(.+?)"\)/);
-          if (text) printOutput(text[1]);
-        } else if (cmd.startsWith("num.mul(")) {
-          const args = cmd.match(/num\.mul\("(.+?)"\)/)[1].split(",").map(Number);
-          printOutput(args.reduce((a, b) => a * b));
+          const txt = cmd.match(/say\.x\("(.+?)"\)/);
+          if (txt) printOutput(txt[1]);
         } else if (cmd.startsWith("num.add(")) {
           const args = cmd.match(/num\.add\("(.+?)"\)/)[1].split(",").map(Number);
           printOutput(args.reduce((a, b) => a + b));
+        } else if (cmd.startsWith("num.mul(")) {
+          const args = cmd.match(/num\.mul\("(.+?)"\)/)[1].split(",").map(Number);
+          printOutput(args.reduce((a, b) => a * b));
         } else if (cmd.startsWith("num.sub(")) {
           const args = cmd.match(/num\.sub\("(.+?)"\)/)[1].split(",").map(Number);
           printOutput(args.reduce((a, b) => a - b));
@@ -137,35 +156,8 @@
           const args = cmd.match(/num\.div\("(.+?)"\)/)[1].split(",").map(Number);
           printOutput(args.reduce((a, b) => a / b));
         } else {
-          printOutput("Unknown command in main block: " + cmd);
+          throw new Error("Unknown command in main block: " + cmd);
         }
-      });
-    }
-
-    function parseShadowBlock(line) {
-      printOutput("Shadow block support is limited in this version.");
-    }
-
-    function executeJSBlock(line) {
-      try {
-        const code = line.replace(/^\[js%%/, '').replace(/\]$/, '').trim();
-        const result = eval(code);
-        if (result !== undefined) printOutput("[js%% result] " + result);
-      } catch (e) {
-        throw new Error("JavaScript Error: " + e.message);
-      }
-    }
-
-    function executeShadowCode(line) {
-      const code = line.replace(/^\[shadow%%/, '').replace(/\]$/, '').trim();
-      if (code.startsWith("wait(")) {
-        const ms = parseInt(code.match(/wait\((\d+)\)/)[1]);
-        printOutput(`Waiting ${ms} ms...`);
-        const start = Date.now();
-        while (Date.now() - start < ms) {} // blocking wait
-        printOutput("Done waiting.");
-      } else {
-        throw new Error("Invalid shadow%% command.");
       }
     }
   </script>
