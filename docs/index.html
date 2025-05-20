@@ -1,230 +1,182 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>SEC Language Web Editor (Full JS Support)</title>
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    margin: 1rem;
-    background: #f9f9f9;
-  }
-  textarea {
-    width: 100%;
-    height: 300px;
-    font-family: monospace;
-    font-size: 14px;
-    margin-bottom: 1rem;
-  }
-  button {
-    padding: 0.6rem 1.2rem;
-    font-size: 16px;
-    cursor: pointer;
-  }
-  #output {
-    background: #222;
-    color: #0f0;
-    padding: 1rem;
-    height: 300px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    font-family: monospace;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SEC Language Editor</title>
+  <style>
+    body {
+      background: #f2f2f2;
+      font-family: Consolas, monospace;
+      padding: 20px;
+      color: #333;
+    }
+
+    h1 {
+      color: #222;
+    }
+
+    textarea {
+      width: 100%;
+      height: 300px;
+      font-size: 14px;
+      font-family: Consolas, monospace;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+      resize: vertical;
+    }
+
+    #output {
+      margin-top: 20px;
+      padding: 10px;
+      background: #e9ffe9;
+      border: 1px solid #8fd88f;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      min-height: 100px;
+    }
+
+    #error-box {
+      margin-top: 20px;
+      display: none;
+      background: #ffe6e6;
+      color: #c00;
+      padding: 10px;
+      border: 1px solid red;
+      border-radius: 6px;
+      font-family: monospace;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+
+    .sec-output {
+      color: #111;
+    }
+
+    .sec-log {
+      color: #117a11;
+    }
+  </style>
 </head>
 <body>
+  <h1>SEC Language Editor</h1>
+  <textarea id="code" placeholder="Write your SEC code here...">[main:: [say.x("Hello World!")] ]</textarea><br/>
+  <button onclick="runSEC()">▶ Run SEC</button>
 
-<h1>SEC Language Web Editor (Full JS Support)</h1>
-<textarea id="secCode">
-// Try SEC code here:
-{[main::
-[say.x("Hello World!")]
-[num.mul("2, 3")]
-]}
-[js%%
-console.log("This is raw JavaScript running!");
-let x = 10;
-console.log("x squared:", x*x);
-]
-[end]
-</textarea>
-<br />
-<button id="runBtn">Run SEC Code</button>
+  <div id="output" class="sec-output"></div>
+  <div id="error-box"></div>
 
-<h2>Output:</h2>
-<pre id="output"></pre>
-
-<script>
-(async () => {
-  const outputEl = document.getElementById('output');
-
-  // Helper to append output safely
-  function print(text) {
-    outputEl.textContent += text + '\n';
-    outputEl.scrollTop = outputEl.scrollHeight;
-  }
-
-  // Wait function for shadow%% (returns a Promise)
-  function wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  // Run JS code safely, capturing console.log output
-  async function runJS(code) {
-    // Override console.log temporarily
-    const originalLog = console.log;
-    console.log = (...args) => {
-      print(args.join(' '));
-      originalLog.apply(console, args);
-    };
-    try {
-      // Use Async Function so we can await wait()
-      let asyncFunc = new Function('wait', `'use strict'; return (async () => { ${code} })();`);
-      await asyncFunc(wait);
-    } catch (e) {
-      print('JavaScript Error: ' + e.message);
-    }
-    console.log = originalLog;
-  }
-
-  // Main SEC interpreter with JS and shadow support
-  async function runSEC(code) {
-    outputEl.textContent = '';
-    let lines = code.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('//'));
-    let variables = {};
-
-    for (let i = 0; i < lines.length; i++) {
-      let line = lines[i];
-      if (line === 'end') break;
-
-      // Ignore block markers
-      if (line.startsWith('{[') || line.endsWith(']}') || line === '}') continue;
-
-      // Check if line is a [js%% ... ] block (may span multiple lines)
-      if (line.startsWith('[js%%')) {
-        let jsCodeLines = [];
-        if (line.endsWith(']')) {
-          // One line js block
-          jsCodeLines.push(line.slice(4, -1).trim());
-        } else {
-          // Multi-line js block: consume lines until ']'
-          jsCodeLines.push(line.slice(4).trim());
-          while (++i < lines.length) {
-            let l = lines[i];
-            if (l.endsWith(']')) {
-              jsCodeLines.push(l.slice(0, -1).trim());
-              break;
-            }
-            jsCodeLines.push(l);
-          }
-        }
-        let jsCode = jsCodeLines.join('\n');
-        await runJS(jsCode);
-        continue;
+  <script>
+    function runSEC() {
+      const code = document.getElementById("code").value;
+      document.getElementById("output").innerText = "";
+      document.getElementById("error-box").style.display = "none";
+      try {
+        parseSEC(code);
+      } catch (e) {
+        showSECError(e.message);
       }
+    }
 
-      // Check for combined [js%% & shadow%% ... ] blocks
-      if (line.startsWith('[js%% & shadow%%')) {
-        let combinedLines = [];
-        if (line.endsWith(']')) {
-          combinedLines.push(line.slice(14, -1).trim());
-        } else {
-          combinedLines.push(line.slice(14).trim());
-          while (++i < lines.length) {
-            let l = lines[i];
-            if (l.endsWith(']')) {
-              combinedLines.push(l.slice(0, -1).trim());
-              break;
-            }
-            combinedLines.push(l);
-          }
-        }
-        // split by ^ newlines
-        let parts = combinedLines.join('\n').split('^').map(p => p.trim()).filter(Boolean);
-        for (const part of parts) {
-          if (part.startsWith('console.log') || part.includes('console.')) {
-            await runJS(part);
-          } else if (part.startsWith('wait(')) {
-            try {
-              // eval wait
-              let ms = parseInt(part.match(/wait\((\d+)\)/)[1]);
-              await wait(ms);
-            } catch {
-              print('Error: Invalid wait command');
-            }
+    function parseSEC(raw) {
+      const lines = raw.split(/[\r\n]+/);
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line || line.startsWith("//")) continue;
+
+        try {
+          if (line.startsWith("[main::")) {
+            parseMainBlock(line);
+          } else if (line.startsWith("[shadow::")) {
+            parseShadowBlock(line);
+          } else if (line.startsWith("[js%%")) {
+            executeJSBlock(line);
+          } else if (line.startsWith("[shadow%%")) {
+            executeShadowCode(line);
           } else {
-            // fallback run as JS
-            await runJS(part);
+            throw new Error(`Unrecognized block at line ${i + 1}: ${line}`);
           }
+        } catch (err) {
+          throw new Error(`Line ${i + 1}: ${err.message}`);
         }
-        continue;
-      }
-
-      // Normal main library commands: [say.x("text")], etc.
-      if (line.startsWith('[') && line.endsWith(']')) {
-        let command = line.slice(1, -1).trim();
-
-        // skip if library prefix (e.g. main::)
-        if (command.startsWith('main::')) command = command.slice(6);
-
-        // parse func(args)
-        let cmdMatch = command.match(/^(\w+\.\w+)\((.*)\)$/);
-        if (!cmdMatch) {
-          print('Unknown or malformed command: ' + command);
-          continue;
-        }
-
-        let [_, func, argsRaw] = cmdMatch;
-        let args = argsRaw.trim().replace(/^"|"$/g, '');
-        let argList = args.split(',').map(a => a.trim());
-
-        switch (func) {
-          case 'say.x':
-            print(argList.join(', '));
-            break;
-          case 'num.mul':
-            print(argList.reduce((a, b) => Number(a) * Number(b), 1));
-            break;
-          case 'num.add':
-            print(argList.reduce((a, b) => Number(a) + Number(b), 0));
-            break;
-          case 'num.sub':
-            if (argList.length >= 2) {
-              print(Number(argList[0]) - Number(argList[1]));
-            }
-            break;
-          case 'num.div':
-            if (argList.length >= 2) {
-              print(Number(argList[0]) / Number(argList[1]));
-            }
-            break;
-          case 'input.age':
-            let answer = prompt(argList.join(', '));
-            variables['age'] = answer;
-            break;
-          case 'fetch.x':
-            let varName = argList[0];
-            if (variables[varName] !== undefined) {
-              print(variables[varName]);
-            } else {
-              print(`Error: variable '${varName}' not found`);
-            }
-            break;
-          default:
-            print(`Unknown command: ${func}`);
-        }
-        continue;
       }
     }
-  }
 
-  document.getElementById('runBtn').addEventListener('click', async () => {
-    const code = document.getElementById('secCode').value;
-    await runSEC(code);
-  });
-})();
-</script>
+    function parseMainBlock(line) {
+      const commands = line.match(/\[(.*?)\]/g);
+      if (!commands) throw new Error("No commands found in main block.");
+      commands.forEach(cmd => {
+        const clean = cmd.replace(/[\[\]]/g, "");
+        if (clean.startsWith("say.x(")) {
+          const msg = clean.match(/say\.x\("(.*)"\)/);
+          if (msg) printOutput(msg[1]);
+          else throw new Error("Invalid say.x syntax");
+        } else if (clean.startsWith("num.mul(")) {
+          const nums = clean.match(/num\.mul\("([^"]+)"\)/)[1].split(",");
+          const result = Number(nums[0]) * Number(nums[1]);
+          printOutput(result);
+        } else if (clean.startsWith("num.add(")) {
+          const nums = clean.match(/num\.add\("([^"]+)"\)/)[1].split(",");
+          const result = Number(nums[0]) + Number(nums[1]);
+          printOutput(result);
+        } else if (clean.startsWith("num.div(")) {
+          const nums = clean.match(/num\.div\("([^"]+)"\)/)[1].split(",");
+          const result = Number(nums[0]) / Number(nums[1]);
+          printOutput(result);
+        } else if (clean.startsWith("num.sub(")) {
+          const nums = clean.match(/num\.sub\("([^"]+)"\)/)[1].split(",");
+          const result = Number(nums[0]) - Number(nums[1]);
+          printOutput(result);
+        }
+      });
+    }
 
+    function parseShadowBlock(line) {
+      printOutput("Shadow block started... (not fully implemented)");
+    }
+
+    function executeJSBlock(line) {
+      const jsCode = line.substring(line.indexOf("%%") + 2, line.lastIndexOf("]")).trim();
+      try {
+        const result = eval(jsCode);
+        if (result !== undefined) printOutput("[js%% result] " + result);
+      } catch (e) {
+        throw new Error("JavaScript error: " + e.message);
+      }
+    }
+
+    function executeShadowCode(line) {
+      const shadowCode = line.substring(line.indexOf("%%") + 2, line.lastIndexOf("]")).trim();
+      if (shadowCode.includes("wait(")) {
+        const ms = parseInt(shadowCode.match(/wait\((\d+)\)/)[1]);
+        return new Promise(resolve => {
+          setTimeout(() => {
+            printOutput("[shadow%%] waited " + ms + "ms");
+            resolve();
+          }, ms);
+        });
+      } else {
+        throw new Error("Unknown shadow code");
+      }
+    }
+
+    function printOutput(text) {
+      const output = document.getElementById("output");
+      output.innerText += text + "\n";
+    }
+
+    function showSECError(message) {
+      const errorBox = document.getElementById("error-box");
+      errorBox.innerText = "🚨 SEC Error: " + message;
+      errorBox.style.display = "block";
+    }
+  </script>
 </body>
 </html>
