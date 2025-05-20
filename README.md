@@ -12,9 +12,13 @@ SEC (Simple Executable Code) is a custom language that uses block-style logic an
 ## goals
 
 >be one of the top languages
+
 >easy to use accesible langauge
+
 >error handling and security
+
 >more updates
+
 >big grannd opening day
 
 Example:
