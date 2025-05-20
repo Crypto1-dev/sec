@@ -1,139 +1,230 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>SEC Language Alpha</title>
-  <style>
-    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
-    textarea { width: 100%; height: 200px; font-family: monospace; }
-    pre { background: #fff; padding: 10px; border: 1px solid #ccc; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SEC Language Web Editor (Full JS Support)</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 1rem;
+    background: #f9f9f9;
+  }
+  textarea {
+    width: 100%;
+    height: 300px;
+    font-family: monospace;
+    font-size: 14px;
+    margin-bottom: 1rem;
+  }
+  button {
+    padding: 0.6rem 1.2rem;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  #output {
+    background: #222;
+    color: #0f0;
+    padding: 1rem;
+    height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: monospace;
+  }
+</style>
 </head>
 <body>
-  <h1>SEC Alpha Interpreter</h1>
-  <textarea id="secCode">[main::
+
+<h1>SEC Language Web Editor (Full JS Support)</h1>
+<textarea id="secCode">
+// Try SEC code here:
+{[main::
 [say.x("Hello World!")]
 [num.mul("2, 3")]
-[input.age("How old are you?")]
-[fetch.x(age)]
-{[shadow::
-[js%% & shadow%%
-console.log("Hello, World!");
-wait(1000)
-console.log("Thanks for waiting.");
-]}]
-end</textarea>
-  <br><br>
-  <button onclick="runSEC()">Run SEC Code</button>
-  <h3>Output:</h3>
-  <pre id="output"></pre>
+]}
+[js%%
+console.log("This is raw JavaScript running!");
+let x = 10;
+console.log("x squared:", x*x);
+]
+[end]
+</textarea>
+<br />
+<button id="runBtn">Run SEC Code</button>
 
-  <script>
-    async function runSEC() {
-      const rawCode = document.getElementById("secCode").value;
-      const output = document.getElementById("output");
-      let result = '';
-      const vars = {};
+<h2>Output:</h2>
+<pre id="output"></pre>
 
-      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+<script>
+(async () => {
+  const outputEl = document.getElementById('output');
 
-      async function processLine(line) {
-        line = line.trim();
+  // Helper to append output safely
+  function print(text) {
+    outputEl.textContent += text + '\n';
+    outputEl.scrollTop = outputEl.scrollHeight;
+  }
 
-        // Skip if not a command
-        if (!line.startsWith("[") || !line.endsWith("]")) return;
+  // Wait function for shadow%% (returns a Promise)
+  function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
-        line = line.slice(1, -1).trim();
-
-        if (line.startsWith("main::")) return;
-        if (line.startsWith("shadow::")) return;
-
-        // Handle block libraries
-        if (line.includes("js%%") || line.includes("shadow%%")) {
-          const [libs, ...rest] = line.split("^");
-          const commands = rest.map(x => x.trim());
-
-          if (libs.includes("js%%")) {
-            for (const cmd of commands) {
-              try { eval(cmd); } catch (e) { result += `JS Error: ${e}\n`; }
-            }
-          }
-          if (libs.includes("shadow%%")) {
-            for (const cmd of commands) {
-              if (cmd.startsWith("wait(")) {
-                const time = parseInt(cmd.match(/wait\((\d+)\)/)[1]);
-                await sleep(time);
-              }
-            }
-          }
-          return;
-        }
-
-        // say.x
-        if (line.startsWith("say.x(")) {
-          const content = line.match(/say\.x\("(.+?)"\)/);
-          if (content) result += content[1] + "\n";
-        }
-
-        // num.*
-        if (line.startsWith("num.")) {
-          const match = line.match(/num\.(\w+)\("(.+?)"\)/);
-          if (!match) return;
-          const fn = match[1];
-          const nums = match[2].split(",").map(n => parseFloat(n.trim()));
-          let val;
-          if (fn === "mul") val = nums.reduce((a, b) => a * b, 1);
-          if (fn === "add") val = nums.reduce((a, b) => a + b, 0);
-          if (fn === "div") val = nums.reduce((a, b) => a / b);
-          if (fn === "sub") val = nums.reduce((a, b) => a - b);
-          result += val + "\n";
-        }
-
-        // input.age
-        if (line.startsWith("input.age(")) {
-          const question = line.match(/input\.age\("(.+?)"\)/);
-          if (question) {
-            const val = prompt(question[1]);
-            vars["age"] = val;
-          }
-        }
-
-        // fetch.x
-        if (line.startsWith("fetch.x(")) {
-          const key = line.match(/fetch\.x\((\w+)\)/);
-          if (key && vars[key[1]]) {
-            result += vars[key[1]] + "\n";
-          }
-        }
-
-        // js%% single block
-        if (line.startsWith("js%%")) {
-          const jsCode = line.replace("js%%", "").trim();
-          try { eval(jsCode); } catch (e) { result += `JS Error: ${e}\n`; }
-        }
-
-        // shadow%% single block
-        if (line.startsWith("shadow%%")) {
-          if (line.includes("wait(")) {
-            const time = parseInt(line.match(/wait\((\d+)\)/)[1]);
-            await sleep(time);
-          }
-        }
-      }
-
-      output.innerText = "Running...\n";
-
-      const lines = rawCode
-        .replace(/{|}/g, "") // Remove blocks
-        .split("\n")
-        .map(l => l.trim())
-        .filter(l => l && !l.startsWith("//") && l !== "end");
-
-      for (let line of lines) {
-        await processLine(line);
-      }
-
-      output.innerText = result || "(no output)";
+  // Run JS code safely, capturing console.log output
+  async function runJS(code) {
+    // Override console.log temporarily
+    const originalLog = console.log;
+    console.log = (...args) => {
+      print(args.join(' '));
+      originalLog.apply(console, args);
+    };
+    try {
+      // Use Async Function so we can await wait()
+      let asyncFunc = new Function('wait', `'use strict'; return (async () => { ${code} })();`);
+      await asyncFunc(wait);
+    } catch (e) {
+      print('JavaScript Error: ' + e.message);
     }
-  </script>
+    console.log = originalLog;
+  }
+
+  // Main SEC interpreter with JS and shadow support
+  async function runSEC(code) {
+    outputEl.textContent = '';
+    let lines = code.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('//'));
+    let variables = {};
+
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i];
+      if (line === 'end') break;
+
+      // Ignore block markers
+      if (line.startsWith('{[') || line.endsWith(']}') || line === '}') continue;
+
+      // Check if line is a [js%% ... ] block (may span multiple lines)
+      if (line.startsWith('[js%%')) {
+        let jsCodeLines = [];
+        if (line.endsWith(']')) {
+          // One line js block
+          jsCodeLines.push(line.slice(4, -1).trim());
+        } else {
+          // Multi-line js block: consume lines until ']'
+          jsCodeLines.push(line.slice(4).trim());
+          while (++i < lines.length) {
+            let l = lines[i];
+            if (l.endsWith(']')) {
+              jsCodeLines.push(l.slice(0, -1).trim());
+              break;
+            }
+            jsCodeLines.push(l);
+          }
+        }
+        let jsCode = jsCodeLines.join('\n');
+        await runJS(jsCode);
+        continue;
+      }
+
+      // Check for combined [js%% & shadow%% ... ] blocks
+      if (line.startsWith('[js%% & shadow%%')) {
+        let combinedLines = [];
+        if (line.endsWith(']')) {
+          combinedLines.push(line.slice(14, -1).trim());
+        } else {
+          combinedLines.push(line.slice(14).trim());
+          while (++i < lines.length) {
+            let l = lines[i];
+            if (l.endsWith(']')) {
+              combinedLines.push(l.slice(0, -1).trim());
+              break;
+            }
+            combinedLines.push(l);
+          }
+        }
+        // split by ^ newlines
+        let parts = combinedLines.join('\n').split('^').map(p => p.trim()).filter(Boolean);
+        for (const part of parts) {
+          if (part.startsWith('console.log') || part.includes('console.')) {
+            await runJS(part);
+          } else if (part.startsWith('wait(')) {
+            try {
+              // eval wait
+              let ms = parseInt(part.match(/wait\((\d+)\)/)[1]);
+              await wait(ms);
+            } catch {
+              print('Error: Invalid wait command');
+            }
+          } else {
+            // fallback run as JS
+            await runJS(part);
+          }
+        }
+        continue;
+      }
+
+      // Normal main library commands: [say.x("text")], etc.
+      if (line.startsWith('[') && line.endsWith(']')) {
+        let command = line.slice(1, -1).trim();
+
+        // skip if library prefix (e.g. main::)
+        if (command.startsWith('main::')) command = command.slice(6);
+
+        // parse func(args)
+        let cmdMatch = command.match(/^(\w+\.\w+)\((.*)\)$/);
+        if (!cmdMatch) {
+          print('Unknown or malformed command: ' + command);
+          continue;
+        }
+
+        let [_, func, argsRaw] = cmdMatch;
+        let args = argsRaw.trim().replace(/^"|"$/g, '');
+        let argList = args.split(',').map(a => a.trim());
+
+        switch (func) {
+          case 'say.x':
+            print(argList.join(', '));
+            break;
+          case 'num.mul':
+            print(argList.reduce((a, b) => Number(a) * Number(b), 1));
+            break;
+          case 'num.add':
+            print(argList.reduce((a, b) => Number(a) + Number(b), 0));
+            break;
+          case 'num.sub':
+            if (argList.length >= 2) {
+              print(Number(argList[0]) - Number(argList[1]));
+            }
+            break;
+          case 'num.div':
+            if (argList.length >= 2) {
+              print(Number(argList[0]) / Number(argList[1]));
+            }
+            break;
+          case 'input.age':
+            let answer = prompt(argList.join(', '));
+            variables['age'] = answer;
+            break;
+          case 'fetch.x':
+            let varName = argList[0];
+            if (variables[varName] !== undefined) {
+              print(variables[varName]);
+            } else {
+              print(`Error: variable '${varName}' not found`);
+            }
+            break;
+          default:
+            print(`Unknown command: ${func}`);
+        }
+        continue;
+      }
+    }
+  }
+
+  document.getElementById('runBtn').addEventListener('click', async () => {
+    const code = document.getElementById('secCode').value;
+    await runSEC(code);
+  });
+})();
+</script>
+
 </body>
 </html>
