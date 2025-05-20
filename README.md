@@ -4,7 +4,7 @@ This is a basic web editor and interpreter for the SEC programming language (alp
 
 ## 💡 What is SEC?
 
-SEC (Simple Executable Code) is a custom language that uses block-style logic and library calls. This version includes two main libraries:
+SEC (Secure Efficient Code) is a custom language that uses block-style logic and library calls. This version includes two main libraries:
 
 - `main::` – handles display, math, input, etc.
 - `shadow::` – supports JavaScript and delay-style commands
